@@ -1,90 +1,90 @@
 package com.example.sangeet;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.recyclerview.widget.RecyclerView;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+import androidx.recyclerview.widget.LinearLayoutManager;
 
-import android.Manifest;
-import android.content.Intent;
 import android.os.Bundle;
-import android.os.Environment;
+import android.widget.TextView;
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.database.Cursor;
+import android.provider.MediaStore;
 import android.view.View;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
-import android.widget.ListView;
-
-import com.karumi.dexter.Dexter;
-import com.karumi.dexter.PermissionToken;
-import com.karumi.dexter.listener.PermissionDeniedResponse;
-import com.karumi.dexter.listener.PermissionGrantedResponse;
-import com.karumi.dexter.listener.PermissionRequest;
-import com.karumi.dexter.listener.single.PermissionListener;
+import android.widget.Toast;
 
 import java.io.File;
 import java.util.ArrayList;
 
 public class MainActivity extends AppCompatActivity {
 
+    RecyclerView recyclerView;
+    TextView noMusicTextView;
+    ArrayList<AudioModel> songsList = new ArrayList<>();
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        ListView listView;
-
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        listView = findViewById(R.id.listView);
-        Dexter.withContext(this)
-                .withPermission(Manifest.permission.READ_EXTERNAL_STORAGE)
-                .withListener(new PermissionListener() {
-                    @Override
-                    public void onPermissionGranted(PermissionGrantedResponse permissionGrantedResponse) {
 
-                        ArrayList<File> mySongs = fetchSongs(Environment.getExternalStorageDirectory());
-                        String [] items = new String[mySongs.size()];
-                        for(int i=0;i<mySongs.size();i++){
-                            items[i] = mySongs.get(i).getName().replace(".mp3", "");
-                        }
+        recyclerView = findViewById(R.id.recycler_view);
+        noMusicTextView = findViewById(R.id.no_songs_text);
 
-                        ArrayAdapter<String> adapter = new ArrayAdapter<String>(MainActivity.this, android.R.layout.simple_list_item_1, items);
-                        listView.setAdapter(adapter);
-                        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-                            @Override
-                            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                                Intent intent = new Intent(MainActivity.this, PlaySong.class);
-                                String currentSong = listView.getItemAtPosition(position).toString();
-                                intent.putExtra("songList", mySongs);
-                                intent.putExtra("currentSong", currentSong);
-                                intent.putExtra("position", position);
-                                startActivity(intent);
-                            }
-                        });
-                    }
+        if(!checkPermission()) {
+            requestPermission();
+            return;
+        }
 
-                    @Override
-                    public void onPermissionDenied(PermissionDeniedResponse permissionDeniedResponse) {
+        String[] projection = {
+                MediaStore.Audio.Media.TITLE,
+                MediaStore.Audio.Media.DATA,
+                MediaStore.Audio.Media.DURATION
+        };
 
-                    }
+        String selection = MediaStore.Audio.Media.IS_MUSIC +"!= 0";
 
-                    @Override
-                    public void onPermissionRationaleShouldBeShown(PermissionRequest permissionRequest, PermissionToken permissionToken) {
-                        permissionToken.continuePermissionRequest();
-                    }
-                })
-                .check();
-    }
+        Cursor cursor = getContentResolver().query(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,projection,selection,null,null);
 
-    public ArrayList<File> fetchSongs(File file){
-        ArrayList arrayList = new ArrayList();
-        File [] songs = file.listFiles();
-        if(songs !=null){
-            for(File myFile: songs){
-                if(!myFile.isHidden() && myFile.isDirectory()){
-                    arrayList.addAll(fetchSongs(myFile));
-                }
-                else{
-                    if(myFile.getName().endsWith(".mp3") && !myFile.getName().startsWith(".")){
-                        arrayList.add(myFile);
-                    }
-                }
+        while(cursor.moveToNext()) {
+            AudioModel songData = new AudioModel(cursor.getString(1),cursor.getString(0),cursor.getString(2));
+
+            if(new File(songData.getPath()).exists()) {
+                songsList.add(songData);
             }
         }
-        return arrayList;
+
+        if(songsList.size()==0) {
+            noMusicTextView.setVisibility(View.VISIBLE);
+        }
+        else {
+            recyclerView.setLayoutManager(new LinearLayoutManager(this));
+            recyclerView.setAdapter(new MusicListAdapter(songsList,getApplicationContext()));
+        }
     }
+
+    boolean checkPermission() {
+        int result = ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.READ_EXTERNAL_STORAGE);
+        return result == PackageManager.PERMISSION_GRANTED;
+    }
+
+    void requestPermission() {
+
+        if(ActivityCompat.shouldShowRequestPermissionRationale(MainActivity.this,Manifest.permission.READ_EXTERNAL_STORAGE)) {
+            Toast.makeText(MainActivity.this,"READ PERMISSION IS REQUIRED,PLEASE ALLOW FROM SETTTINGS",Toast.LENGTH_SHORT).show();
+        }
+        else {
+            ActivityCompat.requestPermissions(MainActivity.this,new String[]{Manifest.permission.READ_EXTERNAL_STORAGE},123);
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if(recyclerView!=null) {
+            recyclerView.setAdapter(new MusicListAdapter(songsList,getApplicationContext()));
+        }
+    }
+
 }
